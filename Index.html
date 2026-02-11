@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V2</title>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: 'Arial Black', sans-serif; }
+        canvas { display: block; touch-action: none; }
+    </style>
+</head>
+<body>
+    <canvas id="c"></canvas>
+
+    <script>
+        const canvas = document.getElementById('c');
+        const ctx = canvas.getContext('2d');
+        let width, height, fontSize;
+        let letters = [], fireworks = [], extraBalloons = [], particles = [];
+        
+        const words = ["HAPPY", "BIRTHDAY", "ASTRID"];
+        let frameCount = 0;
+        let phase = 'firing'; 
+        let currentHue = Math.random() * 360;
+
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            const isMobile = width < height;
+            fontSize = isMobile ? Math.floor(width / 6.5) : Math.floor(width / 15);
+        }
+
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y; this.color = color;
+                this.vel = { x: (Math.random()-0.5)*10, y: (Math.random()-0.5)*10 };
+                this.alpha = 1;
+                this.friction = 0.95;
+            }
+            update() {
+                this.vel.x *= this.friction; this.vel.y *= this.friction;
+                this.x += this.vel.x; this.y += this.vel.y;
+                this.alpha -= 0.02;
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = this.color;
+                ctx.beginPath(); ctx.arc(this.x, this.y, 2, 0, Math.PI*2); ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class Firework {
+            constructor(targetX, targetY, char, color) {
+                this.x = Math.random() * width;
+                this.y = height;
+                this.targetX = targetX;
+                this.targetY = targetY;
+                this.char = char;
+                this.color = color;
+                this.speed = 0.05;
+                this.progress = 0;
+                this.exploded = false;
+            }
+            update() {
+                if (this.progress < 1) {
+                    this.progress += this.speed;
+                    this.x += (this.targetX - this.x) * this.speed;
+                    this.y += (this.targetY - this.y) * this.speed;
+                } else if (!this.exploded) {
+                    this.exploded = true;
+                    if (this.char) letters.push(new Letter(this.char, this.targetX, this.targetY, this.color));
+                    for(let i=0; i<20; i++) particles.push(new Particle(this.targetX, this.targetY, this.color));
+                }
+            }
+            draw() {
+                if (!this.exploded) {
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath(); ctx.arc(this.x, this.y, 3, 0, Math.PI*2); ctx.fill();
+                }
+            }
+        }
+
+        class Letter {
+            constructor(char, x, y, color) {
+                this.char = char; this.x = x; this.y = y; this.color = color;
+                this.alpha = 0; this.isFloating = false;
+                this.wobble = Math.random() * Math.PI * 2;
+            }
+            update() {
+                if (this.alpha < 1) this.alpha += 0.05;
+                if (this.isFloating) {
+                    this.y -= 2.5;
+                    this.x += Math.sin(this.wobble + frameCount * 0.04) * 1.5;
+                }
+            }
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.font = `bold ${fontSize}px Arial`;
+                ctx.textAlign = "center";
+                
+                if(this.isFloating) {
+                    ctx.beginPath();
+                    ctx.ellipse(this.x, this.y, fontSize * 0.6, fontSize * 0.8, 0, 0, Math.PI * 2);
+                    ctx.fillStyle = this.color; ctx.fill();
+                    ctx.beginPath(); ctx.moveTo(this.x, this.y + fontSize * 0.8); ctx.lineTo(this.x, this.y + fontSize * 0.8 + 40);
+                    ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.stroke();
+                    ctx.fillStyle = "#FFF";
+                } else {
+                    ctx.fillStyle = this.color;
+                }
+                
+                ctx.fillText(this.char, this.x, this.y + (fontSize / 3));
+                ctx.restore();
+            }
+        }
+
+        class DecorativeBalloon {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = height + 100;
+                this.color = `hsl(${Math.random() * 360}, 70%, 50%)`;
+                this.speed = 2 + Math.random() * 2;
+            }
+            update() {
+                this.y -= this.speed;
+                letters.forEach(l => {
+                    if (Math.abs(this.y - l.y) < 50 && Math.abs(this.x - l.x) < width/5) l.isFloating = true;
+                });
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.ellipse(this.x, this.y, fontSize*0.4, fontSize*0.6, 0, 0, Math.PI*2);
+                ctx.fillStyle = this.color; ctx.fill();
+            }
+        }
+
+        function resetAll() {
+            letters = []; fireworks = []; extraBalloons = []; particles = [];
+            phase = 'firing';
+            currentHue = Math.random() * 360;
+
+            const isMobile = width < height;
+            ctx.font = `bold ${fontSize}px Arial`;
+            
+            let totalDelay = 0;
+
+            words.forEach((word, wordIdx) => {
+                const wordWidth = ctx.measureText(word).width;
+                const charSpacing = wordWidth / word.length;
+                const startX = (width - wordWidth) / 2 + (charSpacing / 2);
+                const yPos = isMobile ? (height / 4) * (wordIdx + 1) : height / 2;
+
+                let offsetX = 0;
+                if(!isMobile) {
+                    const fullMessageWidth = ctx.measureText(words.join('  ')).width;
+                    const messageStart = (width - fullMessageWidth) / 2;
+                    let previousWordsWidth = 0;
+                    for(let j=0; j<wordIdx; j++) {
+                        previousWordsWidth += ctx.measureText(words[j] + '  ').width;
+                    }
+                    offsetX = messageStart + previousWordsWidth;
+                }
+
+                for (let i = 0; i < word.length; i++) {
+                    const xPos = isMobile ? startX + (i * charSpacing) : offsetX + (i * charSpacing);
+                    const color = `hsl(${(currentHue + (totalDelay * 15)) % 360}, 100%, 65%)`;
+                    
+                    setTimeout(() => {
+                        if (phase === 'firing') {
+                            fireworks.push(new Firework(xPos, yPos, word[i], color));
+                        }
+                    }, totalDelay * 250);
+                    totalDelay++;
+                }
+            });
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            if (Math.random() < 0.05 && phase !== 'clearing') {
+                fireworks.push(new Firework(Math.random()*width, Math.random()*height/1.5, null, `hsl(${Math.random()*360}, 100%, 60%)`));
+            }
+
+            fireworks.forEach((f, i) => { f.update(); f.draw(); if(f.exploded && !f.char) fireworks.splice(i,1); });
+            particles.forEach((p, i) => { p.update(); p.draw(); if(p.alpha <= 0) particles.splice(i,1); });
+            letters.forEach(l => { l.update(); l.draw(); });
+            extraBalloons.forEach((b, i) => { b.update(); b.draw(); if(b.y < -300) extraBalloons.splice(i, 1); });
+
+            if (letters.length >= 18 && phase === 'firing') {
+                phase = 'waiting';
+                setTimeout(() => {
+                    if (phase === 'waiting') {
+                        phase = 'rising';
+                        for(let i=0; i<70; i++) setTimeout(() => extraBalloons.push(new DecorativeBalloon()), i * 100);
+                        setTimeout(() => letters.forEach(l => l.isFloating = true), 5000);
+                    }
+                }, 4000);
+            }
+
+            if (phase === 'rising' && letters.length > 0 && letters.every(l => l.y < -150)) {
+                phase = 'clearing';
+                setTimeout(() => resetAll(), 1500);
+            }
+
+            frameCount++;
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', () => { init(); });
+        init(); resetAll(); animate();
+    </script>
+</body>
+</html>
