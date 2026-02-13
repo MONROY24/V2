@@ -3,66 +3,118 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V2</title>
+    <title>Para Astrid</title>
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: 'Arial Black', sans-serif; }
-        canvas { display: block; touch-action: none; }
+        canvas { display: block; }
+        
+        #start-btn {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            padding: 20px 50px; font-size: 1.5rem; background: #ff4757; color: white;
+            border: none; border-radius: 50px; cursor: pointer; z-index: 100;
+        }
+
+        #photo-card {
+            position: absolute; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%) scale(0.7);
+            background: white; padding: 20px 20px 70px 20px;
+            box-shadow: 0 0 100px rgba(255, 255, 255, 0.3);
+            z-index: 200; text-align: center;
+            opacity: 0; pointer-events: none;
+            transition: opacity 2s ease, transform 2.5s cubic-bezier(0.1, 0.9, 0.2, 1);
+        }
+        #photo-card.show { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+        
+        #photo-card img { width: 280px; height: 350px; object-fit: cover; border: 1px solid #ddd; }
+        .msg-top { font-family: sans-serif; font-size: 12px; margin-bottom: 12px; color: #888; letter-spacing: 2px; }
+        .msg-bottom { font-family: 'Brush Script MT', cursive; font-size: 35px; margin-top: 20px; color: #d63031; }
+        
+        #close-photo {
+            position: absolute; top: -15px; right: -15px; background: #ff4757; color: #fff;
+            border-radius: 50%; width: 40px; height: 40px; cursor: pointer; border: 3px solid #fff; font-weight: bold;
+        }
     </style>
 </head>
 <body>
+
+    <button id="start-btn">EMPEZAR</button>
+
+    <div id="photo-card">
+        <button id="close-photo">X</button>
+        <div class="msg-top" id="text-top"></div>
+        <img src="foto.jpeg" alt="Astrid">
+        <div class="msg-bottom" id="text-bottom"></div>
+    </div>
+
     <canvas id="c"></canvas>
 
     <script>
         const canvas = document.getElementById('c');
         const ctx = canvas.getContext('2d');
         let width, height, fontSize;
-        let letters = [], fireworks = [], extraBalloons = [], particles = [];
+        let letters = [], fireworks = [], particles = [], decoBalloons = [];
         
         const words = ["HAPPY", "BIRTHDAY", "ASTRID"];
+        let phase = 'firing';
         let frameCount = 0;
-        let phase = 'firing'; 
-        let currentHue = Math.random() * 360;
+        let hueOffset = 0;
+
+        const music1 = new Audio('cancion_principal.mp3'); 
+        const music2 = new Audio('cancion_especial.mp3');
+        music1.loop = true; music2.loop = true;
 
         function init() {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
-            
-            const isMobile = width < height;
-            fontSize = isMobile ? Math.floor(width / 6.5) : Math.floor(width / 15);
+            fontSize = width < height ? Math.floor(width / 7.5) : Math.floor(width / 15);
+        }
+
+        function drawBalloonShape(ctx, x, y, w, h, hue) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(x, y + h / 2);
+            ctx.bezierCurveTo(x - w / 1.5, y + h / 2, x - w / 1.5, y - h / 2, x, y - h / 2);
+            ctx.bezierCurveTo(x + w / 1.5, y - h / 2, x + w / 1.5, y + h / 2, x, y + h / 2);
+            ctx.fillStyle = `hsl(${hue}, 80%, 60%)`;
+            ctx.fill();
+            // Nudo
+            ctx.beginPath(); ctx.moveTo(x, y + h/2); ctx.lineTo(x-5, y+h/2+8); ctx.lineTo(x+5, y+h/2+8); ctx.fill();
+            // Brillo
+            ctx.beginPath(); ctx.ellipse(x - w/5, y - h/5, w/10, h/8, Math.PI/4, 0, Math.PI*2);
+            ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fill();
+            ctx.restore();
         }
 
         class Particle {
-            constructor(x, y, color) {
+            constructor(x, y, color, isBig = false) {
                 this.x = x; this.y = y; this.color = color;
-                this.vel = { x: (Math.random()-0.5)*10, y: (Math.random()-0.5)*10 };
-                this.alpha = 1;
-                this.friction = 0.95;
+                this.isBig = isBig;
+                const angle = Math.random() * Math.PI * 2;
+                const force = isBig ? (Math.random() * 25 + 5) : (Math.random() * 6 + 1);
+                this.vel = { x: Math.cos(angle) * force, y: Math.sin(angle) * force };
+                this.friction = 0.96; this.gravity = 0.12; this.alpha = 1;
+                this.decay = isBig ? 0.003 : 0.02;
             }
             update() {
                 this.vel.x *= this.friction; this.vel.y *= this.friction;
-                this.x += this.vel.x; this.y += this.vel.y;
-                this.alpha -= 0.02;
+                this.vel.y += this.gravity; this.x += this.vel.x; this.y += this.vel.y;
+                this.alpha -= this.decay;
             }
             draw() {
-                ctx.save();
-                ctx.globalAlpha = this.alpha;
+                ctx.save(); ctx.globalAlpha = this.alpha;
                 ctx.fillStyle = this.color;
-                ctx.beginPath(); ctx.arc(this.x, this.y, 2, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.isBig ? 3 : 1.5, 0, Math.PI*2); ctx.fill();
                 ctx.restore();
             }
         }
 
         class Firework {
-            constructor(targetX, targetY, char, color) {
-                this.x = Math.random() * width;
-                this.y = height;
-                this.targetX = targetX;
-                this.targetY = targetY;
-                this.char = char;
-                this.color = color;
-                this.speed = 0.05;
-                this.progress = 0;
-                this.exploded = false;
+            constructor(targetX, targetY, char, isBig = false) {
+                this.x = Math.random() * width; this.y = height;
+                this.targetX = targetX; this.targetY = targetY;
+                this.char = char; this.isBig = isBig;
+                this.progress = 0; this.exploded = false;
+                this.speed = isBig ? 0.006 : 0.04;
             }
             update() {
                 if (this.progress < 1) {
@@ -71,150 +123,140 @@
                     this.y += (this.targetY - this.y) * this.speed;
                 } else if (!this.exploded) {
                     this.exploded = true;
-                    if (this.char) letters.push(new Letter(this.char, this.targetX, this.targetY, this.color));
-                    for(let i=0; i<20; i++) particles.push(new Particle(this.targetX, this.targetY, this.color));
+                    if (this.char) letters.push(new Letter(this.char, this.targetX, this.targetY));
+                    let pCount = this.isBig ? 1200 : 35; 
+                    for(let i=0; i<pCount; i++) {
+                        let color = this.isBig ? `hsl(${Math.random()*360}, 100%, 80%)` : `hsl(${Math.random()*360}, 100%, 70%)`;
+                        particles.push(new Particle(this.targetX, this.targetY, color, this.isBig));
+                    }
+                    if(this.isBig) setTimeout(showPhoto, 300);
                 }
             }
             draw() {
                 if (!this.exploded) {
-                    ctx.fillStyle = this.color;
-                    ctx.beginPath(); ctx.arc(this.x, this.y, 3, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = '#FFF';
+                    ctx.beginPath(); ctx.arc(this.x, this.y, this.isBig ? 5 : 2, 0, Math.PI*2); ctx.fill();
                 }
             }
         }
 
         class Letter {
-            constructor(char, x, y, color) {
-                this.char = char; this.x = x; this.y = y; this.color = color;
+            constructor(char, x, y) {
+                this.char = char; this.x = x; this.y = y;
                 this.alpha = 0; this.isFloating = false;
                 this.wobble = Math.random() * Math.PI * 2;
+                this.hue = Math.random() * 360;
             }
             update() {
                 if (this.alpha < 1) this.alpha += 0.05;
                 if (this.isFloating) {
-                    this.y -= 2.5;
-                    this.x += Math.sin(this.wobble + frameCount * 0.04) * 1.5;
+                    this.y -= 2.5; this.x += Math.sin(this.wobble + frameCount * 0.04) * 2;
                 }
             }
             draw() {
                 ctx.save();
                 ctx.globalAlpha = this.alpha;
+                if (this.isFloating) {
+                    drawBalloonShape(ctx, this.x, this.y, fontSize * 0.9, fontSize * 1.2, this.hue);
+                    ctx.fillStyle = "white";
+                } else {
+                    let charHue = (hueOffset + (this.x / width) * 150) % 360;
+                    ctx.fillStyle = `hsl(${charHue}, 100%, 75%)`;
+                }
                 ctx.font = `bold ${fontSize}px Arial`;
                 ctx.textAlign = "center";
-                
-                if(this.isFloating) {
-                    ctx.beginPath();
-                    ctx.ellipse(this.x, this.y, fontSize * 0.6, fontSize * 0.8, 0, 0, Math.PI * 2);
-                    ctx.fillStyle = this.color; ctx.fill();
-                    ctx.beginPath(); ctx.moveTo(this.x, this.y + fontSize * 0.8); ctx.lineTo(this.x, this.y + fontSize * 0.8 + 40);
-                    ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.stroke();
-                    ctx.fillStyle = "#FFF";
-                } else {
-                    ctx.fillStyle = this.color;
-                }
-                
-                ctx.fillText(this.char, this.x, this.y + (fontSize / 3));
+                ctx.fillText(this.char, this.x, this.y + fontSize/3);
                 ctx.restore();
             }
         }
 
-        class DecorativeBalloon {
-            constructor() {
-                this.x = Math.random() * width;
-                this.y = height + 100;
-                this.color = `hsl(${Math.random() * 360}, 70%, 50%)`;
-                this.speed = 2 + Math.random() * 2;
+        class DecoBalloon {
+            constructor() { this.reset(); this.y = Math.random() * height; }
+            reset() {
+                this.x = Math.random() * width; this.y = height + 200;
+                this.hue = Math.random() * 360; this.speed = 1.2 + Math.random() * 2;
+                this.w = 30 + Math.random() * 20;
             }
-            update() {
-                this.y -= this.speed;
-                letters.forEach(l => {
-                    if (Math.abs(this.y - l.y) < 50 && Math.abs(this.x - l.x) < width/5) l.isFloating = true;
-                });
-            }
+            update() { this.y -= this.speed; if (this.y < -200) this.reset(); }
             draw() {
-                ctx.beginPath();
-                ctx.ellipse(this.x, this.y, fontSize*0.4, fontSize*0.6, 0, 0, Math.PI*2);
-                ctx.fillStyle = this.color; ctx.fill();
+                ctx.globalAlpha = 0.4;
+                drawBalloonShape(ctx, this.x, this.y, this.w, this.w * 1.3, this.hue);
+                ctx.strokeStyle = "rgba(255,255,255,0.2)";
+                ctx.beginPath(); ctx.moveTo(this.x, this.y + (this.w*1.3)/2 + 7); ctx.lineTo(this.x, this.y + 100); ctx.stroke();
             }
+        }
+
+        function showPhoto() {
+            music1.pause(); music2.play();
+            document.getElementById('photo-card').classList.add('show');
+            setTimeout(() => typeWriter("ERES UNA GRAN PERSONA", "text-top", 80), 800);
+            setTimeout(() => typeWriter("¡Feliz Cumpleaños, Astrid!", "text-bottom", 100), 2800);
+        }
+
+        document.getElementById('close-photo').onclick = () => {
+            document.getElementById('photo-card').classList.remove('show');
+            music2.pause(); music2.currentTime = 0; music1.play();
+            phase = 'firing'; resetAll();
+        };
+
+        function typeWriter(text, elementId, speed) {
+            let i = 0; const el = document.getElementById(elementId); el.innerHTML = "";
+            function type() { if (i < text.length) { el.innerHTML += text.charAt(i); i++; setTimeout(type, speed); } }
+            type();
         }
 
         function resetAll() {
-            letters = []; fireworks = []; extraBalloons = []; particles = [];
-            phase = 'firing';
-            currentHue = Math.random() * 360;
-
-            const isMobile = width < height;
+            letters = []; fireworks = []; particles = [];
+            let delay = 0;
             ctx.font = `bold ${fontSize}px Arial`;
-            
-            let totalDelay = 0;
 
             words.forEach((word, wordIdx) => {
-                const wordWidth = ctx.measureText(word).width;
-                const charSpacing = wordWidth / word.length;
-                const startX = (width - wordWidth) / 2 + (charSpacing / 2);
-                const yPos = isMobile ? (height / 4) * (wordIdx + 1) : height / 2;
+                // CENTRADO PERFECTO: Medimos el ancho total de la palabra real
+                const totalWordWidth = ctx.measureText(word).width;
+                const startX = (width - totalWordWidth) / 2;
+                const yPos = (width < height) ? (height / 4) * (wordIdx + 1) : (height / 2) + (wordIdx * fontSize * 1.3) - fontSize;
 
-                let offsetX = 0;
-                if(!isMobile) {
-                    const fullMessageWidth = ctx.measureText(words.join('  ')).width;
-                    const messageStart = (width - fullMessageWidth) / 2;
-                    let previousWordsWidth = 0;
-                    for(let j=0; j<wordIdx; j++) {
-                        previousWordsWidth += ctx.measureText(words[j] + '  ').width;
-                    }
-                    offsetX = messageStart + previousWordsWidth;
-                }
-
+                let currentX = startX;
                 for (let i = 0; i < word.length; i++) {
-                    const xPos = isMobile ? startX + (i * charSpacing) : offsetX + (i * charSpacing);
-                    const color = `hsl(${(currentHue + (totalDelay * 15)) % 360}, 100%, 65%)`;
+                    const char = word[i];
+                    const charWidth = ctx.measureText(char).width;
+                    // Centramos el punto del fuego artificial en la mitad de la letra
+                    const targetX = currentX + charWidth / 2;
                     
-                    setTimeout(() => {
-                        if (phase === 'firing') {
-                            fireworks.push(new Firework(xPos, yPos, word[i], color));
-                        }
-                    }, totalDelay * 250);
-                    totalDelay++;
+                    setTimeout(() => { if(phase === 'firing') fireworks.push(new Firework(targetX, yPos, char)); }, delay * 450);
+                    currentX += charWidth;
+                    delay++;
                 }
             });
+
+            setTimeout(() => {
+                phase = 'rising';
+                letters.forEach((l, idx) => { setTimeout(() => { l.isFloating = true; }, idx * 180); });
+                setTimeout(() => { fireworks.push(new Firework(width/2, height/2.2, null, true)); }, 6000);
+            }, delay * 450 + 15000);
         }
 
         function animate() {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
             ctx.fillRect(0, 0, width, height);
-
-            if (Math.random() < 0.05 && phase !== 'clearing') {
-                fireworks.push(new Firework(Math.random()*width, Math.random()*height/1.5, null, `hsl(${Math.random()*360}, 100%, 60%)`));
-            }
-
+            hueOffset += 2.5;
+            if (Math.random() < 0.07) fireworks.push(new Firework(Math.random()*width, Math.random()*height/1.8, null));
+            decoBalloons.forEach(b => { b.update(); b.draw(); });
             fireworks.forEach((f, i) => { f.update(); f.draw(); if(f.exploded && !f.char) fireworks.splice(i,1); });
             particles.forEach((p, i) => { p.update(); p.draw(); if(p.alpha <= 0) particles.splice(i,1); });
             letters.forEach(l => { l.update(); l.draw(); });
-            extraBalloons.forEach((b, i) => { b.update(); b.draw(); if(b.y < -300) extraBalloons.splice(i, 1); });
-
-            if (letters.length >= 18 && phase === 'firing') {
-                phase = 'waiting';
-                setTimeout(() => {
-                    if (phase === 'waiting') {
-                        phase = 'rising';
-                        for(let i=0; i<70; i++) setTimeout(() => extraBalloons.push(new DecorativeBalloon()), i * 100);
-                        setTimeout(() => letters.forEach(l => l.isFloating = true), 5000);
-                    }
-                }, 4000);
-            }
-
-            if (phase === 'rising' && letters.length > 0 && letters.every(l => l.y < -150)) {
-                phase = 'clearing';
-                setTimeout(() => resetAll(), 1500);
-            }
-
             frameCount++;
             requestAnimationFrame(animate);
         }
 
-        window.addEventListener('resize', () => { init(); });
-        init(); resetAll(); animate();
+        document.getElementById('start-btn').onclick = function() {
+            this.style.display = 'none';
+            music1.play(); init(); 
+            for(let i=0; i<15; i++) decoBalloons.push(new DecoBalloon());
+            resetAll(); animate();
+        };
+
+        window.addEventListener('resize', init);
     </script>
 </body>
-
 </html>
